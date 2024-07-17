@@ -1,0 +1,188 @@
+import sqlite3
+from tkinter import *
+from datetime import datetime, timedelta
+from tkinter import ttk
+from tkinter import messagebox
+
+class MainApp(Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Sistema de Reservas")
+        self.geometry("500x350")
+        self.resizable(False, False)
+        
+        self.top_frame = Frame(self)
+        self.bottom_frame = Frame(self)
+        
+        self.label_matricula_aluno = Label(self.top_frame, text="Matrícula do Aluno:")
+        self.label_nome_aluno = Label(self.top_frame, text="Nome do Aluno:")
+        self.label_hora_reserva = Label(self.top_frame, text="Hora da Reserva (HH):")
+        self.label_tempo_esperado = Label(self.top_frame, text="Tempo Esperado (Horas):")
+        self.label_quarto = Label(self.top_frame, text="Quarto:")
+        self.entry_matricula_aluno = Entry(self.top_frame)
+        self.entry_nome_aluno = Entry(self.top_frame)
+        self.entry_hora_reserva = Entry(self.top_frame)
+        self.entry_tempo_esperado = Entry(self.top_frame)
+        self.combobox_quarto = ttk.Combobox(self.top_frame, values=["Quarto 1", "Quarto 2", "Quarto 3", "Quarto 4", "Quarto 5"])
+        
+        self.label_matricula_aluno.grid(row=0, column=0, sticky=W, padx=5, pady=2)
+        self.entry_matricula_aluno.grid(row=0, column=1, padx=5, pady=2)
+        self.label_nome_aluno.grid(row=1, column=0, sticky=W, padx=5, pady=2)
+        self.entry_nome_aluno.grid(row=1, column=1, padx=5, pady=2)
+        self.label_hora_reserva.grid(row=2, column=0, sticky=W, padx=5, pady=2)
+        self.entry_hora_reserva.grid(row=2, column=1, padx=5, pady=2)
+        self.label_tempo_esperado.grid(row=3, column=0, sticky=W, padx=5, pady=2)
+        self.entry_tempo_esperado.grid(row=3, column=1, padx=5, pady=2)
+        self.label_quarto.grid(row=4, column=0, sticky=W, padx=5, pady=2)
+        self.combobox_quarto.grid(row=4, column=1, padx=5, pady=2)
+        
+        self.button_adicionar_matricula = Button(self.bottom_frame, text="Adicionar Matrícula", command=self.adicionar_matricula)
+        self.button_fazer_reserva = Button(self.bottom_frame, text="Fazer Reserva", command=self.fazer_reserva)
+        self.button_visualizar_reservas = Button(self.bottom_frame, text="Visualizar Reservas", command=self.visualizar_reservas)
+        self.button_visualizar_matriculas = Button(self.bottom_frame, text="Visualizar Matrículas", command=self.visualizar_matriculas)
+        self.label_status = Label(self.bottom_frame, text="")
+        
+        self.button_adicionar_matricula.grid(row=0, column=0, padx=5, pady=2)
+        self.button_fazer_reserva.grid(row=0, column=1, padx=5, pady=2)
+        self.button_visualizar_reservas.grid(row=1, column=0, padx=5, pady=2)
+        self.button_visualizar_matriculas.grid(row=1, column=1, padx=5, pady=2)
+        self.label_status.grid(row=2, column=0, columnspan=2, padx=5, pady=2)
+        
+        self.top_frame.pack(side=TOP, fill=X)
+        self.bottom_frame.pack(side=TOP, fill=X)
+
+    def adicionar_matricula(self):
+        matricula = self.entry_matricula_aluno.get()
+        nome_aluno = self.entry_nome_aluno.get()
+        
+        conn = sqlite3.connect('matriculas.db')
+        cursor = conn.cursor()
+        
+        cursor.execute('''CREATE TABLE IF NOT EXISTS matriculas (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            matricula TEXT UNIQUE NOT NULL,
+                            nome_aluno TEXT NOT NULL
+                        )''')
+
+        try:
+            
+            cursor.execute('INSERT INTO matriculas (matricula, nome_aluno) VALUES (?, ?)', (matricula, nome_aluno))
+            conn.commit()
+            messagebox.showinfo("Sucesso", "Matrícula adicionada com sucesso!")
+        except sqlite3.IntegrityError:
+            messagebox.showerror("Erro", "Erro: Essa matrícula já está em uso.")
+        conn.close()
+
+    def matricula_existente(self, matricula):
+        
+        conn = sqlite3.connect('matriculas.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM matriculas WHERE matricula=?', (matricula,))
+        aluno = cursor.fetchone()
+        conn.close()
+        return aluno is not None
+
+    def fazer_reserva(self):
+        hora_reserva = self.entry_hora_reserva.get()
+        tempo_esperado = int(self.entry_tempo_esperado.get())
+        matricula_aluno = self.entry_matricula_aluno.get()
+        nome_aluno = self.entry_nome_aluno.get()
+        quarto = self.combobox_quarto.get()
+
+        
+        if self.matricula_existente(matricula_aluno):
+            
+            conn = sqlite3.connect('reservas.db')
+            cursor = conn.cursor()
+            
+            cursor.execute('''CREATE TABLE IF NOT EXISTS reservas (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                hora_reserva TEXT NOT NULL,
+                                tempo_esperado INTEGER NOT NULL,
+                                matricula_aluno TEXT NOT NULL,
+                                nome_aluno TEXT NOT NULL,
+                                quarto TEXT NOT NULL,
+                                hora_final_reserva TEXT NOT NULL
+                            )''')
+
+            
+            hora_reserva_dt = datetime.strptime(hora_reserva, '%H')
+            hora_final_reserva_dt = hora_reserva_dt + timedelta(hours=tempo_esperado)
+
+            
+            cursor.execute('SELECT * FROM reservas WHERE quarto=?', (quarto,))
+            reservas_existentes = cursor.fetchall()
+            conflito = False
+            for reserva in reservas_existentes:
+                reserva_inicial_dt = datetime.strptime(reserva[1], '%H')
+                hora_final_reserva_dt = reserva_inicial_dt + timedelta(hours=reserva[2])
+                if hora_reserva_dt >= reserva_inicial_dt and hora_reserva_dt < hora_final_reserva_dt:
+                    conflito = True
+                    break
+                if hora_final_reserva_dt > reserva_inicial_dt and hora_final_reserva_dt <= hora_final_reserva_dt:
+                    conflito = True
+                    break
+
+            if conflito:
+                messagebox.showerror("Erro", "Essa hora de reserva entra em conflito com outra reserva para esse quarto")
+            else:
+                
+                cursor.execute('''INSERT INTO reservas (hora_reserva, tempo_esperado, matricula_aluno, nome_aluno, quarto, hora_final_reserva)
+                                VALUES (?, ?, ?, ?, ?, ?)''', (hora_reserva, tempo_esperado, matricula_aluno, nome_aluno, quarto, hora_final_reserva_dt.strftime('%H')))
+                conn.commit()
+                messagebox.showinfo("Sucesso", "Reserva feita com sucesso!")
+
+                
+                self.entry_hora_reserva.delete(0, END)
+                self.entry_tempo_esperado.delete(0, END)
+                self.entry_matricula_aluno.delete(0, END)
+                self.entry_nome_aluno.delete(0, END)
+                self.combobox_quarto.set('')
+            conn.close()
+        else:
+            messagebox.showerror("Erro", "Erro: Matrícula não encontrada.")
+
+    def visualizar_reservas(self):
+        
+        conn = sqlite3.connect('reservas.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM reservas')
+        reservas = cursor.fetchall()
+        conn.close()
+
+        if not reservas:
+            messagebox.showinfo("Informação", "Não há reservas feitas.")
+        else:
+            
+            popup = Toplevel(self)
+            popup.title("Reservas")
+            text = Text(popup)
+            text.insert(END, "ID | Hora Reserva | Tempo Esperado | Matrícula Aluno | Nome Aluno | Quarto\n")
+            for reserva in reservas:
+                text.insert(END, f"{reserva[0]} | {reserva[1]} | {reserva[2]} | {reserva[3]} | {reserva[4]} | {reserva[5]}\n")
+            text.pack()
+
+    def visualizar_matriculas(self):
+        
+        conn = sqlite3.connect('matriculas.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM matriculas')
+        matriculas = cursor.fetchall()
+        conn.close()
+
+        if not matriculas:
+            messagebox.showinfo("Informação", "Não há matrículas feitas.")
+        else:
+            
+            popup = Toplevel(self)
+            popup.title("Matrículas")
+            text = Text(popup)
+            text.insert(END, "Nome do Aluno | Matrícula\n")
+            for matricula in matriculas:
+                text.insert(END, f"{matricula[2]} | {matricula[1]}\n")
+            text.pack()
+
+
+if __name__ == "__main__":
+    app = MainApp()
+    app.mainloop()
