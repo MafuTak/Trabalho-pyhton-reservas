@@ -1,0 +1,155 @@
+import sqlite3
+from datetime import datetime, timedelta
+
+def adicionar_matricula(matricula, nome_aluno):
+    conn = sqlite3.connect('matriculas.db')
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS matriculas (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        matricula TEXT UNIQUE NOT NULL,
+                        nome_aluno TEXT NOT NULL
+                    )''')
+    try:
+        cursor.execute('INSERT INTO matriculas (matricula, nome_aluno) VALUES (?, ?)', (matricula, nome_aluno))
+        conn.commit()
+        print("Matrícula adicionada com sucesso!")
+    except sqlite3.IntegrityError:
+        print("Erro: Essa matrícula já está em uso.")
+    conn.close()
+
+def matricula_existente(matricula):
+    conn = sqlite3.connect('matriculas.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM matriculas WHERE matricula=?', (matricula,))
+    aluno = cursor.fetchone()
+    conn.close()
+    return aluno is not None
+
+def fazer_reserva(hora_reserva, tempo_esperado, matricula_aluno, nome_aluno, quarto):
+    if matricula_existente(matricula_aluno):
+        conn = sqlite3.connect('reservas.db')
+        cursor = conn.cursor()
+        cursor.execute('''CREATE TABLE IF NOT EXISTS reservas (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                hora_reserva TEXT NOT NULL,
+                                tempo_esperado INTEGER NOT NULL,
+                                matricula_aluno TEXT NOT NULL,
+                                nome_aluno TEXT NOT NULL,
+                                quarto TEXT NOT NULL,
+                                hora_final_reserva TEXT NOT NULL
+                            )''')
+
+        hora_reserva_dt = datetime.strptime(hora_reserva, '%H')
+        hora_final_reserva_dt = hora_reserva_dt + timedelta(hours=tempo_esperado)
+
+        cursor.execute('SELECT * FROM reservas WHERE quarto=?', (quarto,))
+        reservas_existente = cursor.fetchall()
+
+        conflito = False
+        for reserva in reservas_existente:
+            reserva_inicial_dt = datetime.strptime(reserva[1], '%H')
+            hora_final_reserva_existente_dt = reserva_inicial_dt + timedelta(hours=reserva[2])
+            if (hora_reserva_dt >= reserva_inicial_dt and hora_reserva_dt < hora_final_reserva_existente_dt) or \
+               (hora_final_reserva_dt > reserva_inicial_dt and hora_final_reserva_dt <= hora_final_reserva_existente_dt):
+                conflito = True
+                break
+
+        if conflito:
+            print("Erro: Essa hora de reserva entra em conflito com outra reserva para esse quarto.")
+        else:
+            cursor.execute('''INSERT INTO reservas (hora_reserva, tempo_esperado, matricula_aluno, nome_aluno, quarto, hora_final_reserva)
+                            VALUES (?, ?, ?, ?, ?, ?)''', (hora_reserva, tempo_esperado, matricula_aluno, nome_aluno, quarto, hora_final_reserva_dt.strftime('%H')))
+            conn.commit()
+            conn.close()
+            print("Reserva feita com sucesso!")
+    else:
+        print("Erro: Matrícula não encontrada.")
+
+def escolher_quarto():
+    quartos = ['Quarto 1', 'Quarto 2', 'Quarto 3', 'Quarto 4', 'Quarto 5']
+
+    print("Escolha um quarto:")
+    for i, quarto in enumerate(quartos):
+        print(f"{i + 1}. {quarto}")
+
+    while True:
+        try:
+            escolha = int(input())
+            if escolha < 1 or escolha > len(quartos):
+                print("Escolha inválida. Digite um número entre 1 e 5:")
+            else:
+                return quartos[escolha - 1]
+        except ValueError:
+            print("Escolha inválida. Digite um número inteiro:")
+
+def listar_reservas():
+    conn = sqlite3.connect('reservas.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM reservas')
+    reservas = cursor.fetchall()
+    conn.close()
+
+    if not reservas:
+        print("Não há reservas feitas.")
+    else:
+        print("\nReservas:")
+        for reserva in reservas:
+            print(f"""
+ID: {reserva[0]}, 
+Hora Reserva: {reserva[1]}, 
+Tempo Esperado: {reserva[2]}, 
+Matrícula Aluno: {reserva[3]},
+Nome Aluno: {reserva[4]},
+Quarto: {reserva[5]}
+""")
+def listar_matriculas():
+    conn = sqlite3.connect('matriculas.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM matriculas')
+    matriculas = cursor.fetchall()
+    conn.close()
+
+    if not matriculas:
+        print("Não há matrículas feitas.")
+    else:
+        print("\nMatrículas:")
+        for matricula in matriculas:
+            print(f"Nome do aluno: {matricula[2]}, Matrícula: {matricula[1]}")
+
+def menu():
+    while True:
+        print("\nEscolha uma opção:")
+        print("1. Adicionar matrícula")
+        print("2. Fazer reserva")
+        print("3. Visualizar matrículas")
+        print("4. Visualizar reservas")
+        print("5. Sair")
+
+        opcao = input("\nOpção: ")
+
+        if opcao == '1':
+            nova_matricula = input("\nDigite a nova matrícula: ")
+            nome_aluno = input("Digite o nome do aluno: ")
+            adicionar_matricula(nova_matricula, nome_aluno)
+
+        elif opcao == '2':
+            hora_reserva = input("\nHora da reserva (formato HH): ")
+            tempo_esperado = int(input("Tempo esperado (horas): "))
+            matricula_aluno = input("Matricula do aluno: ")
+            nome_aluno = input("Nome do aluno: ")
+            quarto = escolher_quarto()
+            fazer_reserva(hora_reserva, tempo_esperado, matricula_aluno, nome_aluno, quarto)
+
+        elif opcao == '3':
+            listar_matriculas()
+
+        elif opcao == '4':
+            listar_reservas()
+
+        elif opcao == '5':
+            print("\nSaindo...")
+            break
+        else:
+            print("Opção inválida. Por favor, escolha novamente.")
+
+menu()
